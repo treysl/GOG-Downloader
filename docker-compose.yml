@@ -11,6 +11,7 @@ services:
       - DOWNLOAD_PATH=/downloads
     volumes:
       - downloads:/downloads
+    restart: unless-stopped
 
 volumes:
   downloads:

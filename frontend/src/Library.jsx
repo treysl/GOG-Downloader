@@ -15,7 +15,7 @@ function Library() {
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [selected, setSelected] = useState(new Set());
-  const [downloadPath, setDownloadPath] = useState("");
+  const [downloadBase, setDownloadBase] = useState("");
   const [includeBonus, setIncludeBonus] = useState(true);
   const [status, setStatus] = useState(null);
   const [downloading, setDownloading] = useState(false);
@@ -38,7 +38,10 @@ function Library() {
   useEffect(() => { loadLibrary(); }, [loadLibrary]);
 
   useEffect(() => {
-    getDownloadPath().then((data) => setDownloadPath(data.path || "/downloads"));
+    // Fetch the configured base download path so we can display it to the user.
+    getDownloadPath()
+      .then((data) => setDownloadBase(data.path || ""))
+      .catch(() => setDownloadBase(""));
   }, []);
 
   useEffect(() => {
@@ -75,7 +78,7 @@ function Library() {
     setError("");
     setDownloading(true);
     setStatus({ status: "queued" });
-    startDownload(ids, downloadPath, includeBonus).catch((e) => {
+    startDownload(ids, includeBonus).catch((e) => {
       setError(e.message);
       setDownloading(false);
     });
@@ -210,33 +213,37 @@ function Library() {
 
           <div className="divider-v" style={{ width: 1, height: 24, background: "var(--gog-border)" }} />
 
-          <label style={{
-            display: "flex", alignItems: "center", gap: "0.5rem",
-            fontSize: "0.85rem", color: "var(--gog-text-secondary)",
-          }}>
-            <svg aria-hidden="true" style={{
-              width: 14, height: 14, fill: "none",
-              stroke: "var(--gog-text-muted)", strokeWidth: 2,
-            }} viewBox="0 0 24 24">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-            </svg>
-            <input
-              type="text"
-              aria-label="Download path"
-              value={downloadPath}
-              onChange={(e) => setDownloadPath(e.target.value)}
-              style={{
-                padding: "0.35rem 0.5rem",
-                borderRadius: "var(--gog-radius-sm)",
-                border: "1px solid var(--gog-border)",
-                background: "var(--gog-bg-input)",
-                color: "var(--gog-text)",
-                fontFamily: "monospace",
-                fontSize: "0.8rem",
-                width: 200,
-              }}
-            />
-          </label>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              fontSize: "0.85rem",
+              color: "var(--gog-text-secondary)",
+            }}>
+              <svg aria-hidden="true" style={{
+                width: 14, height: 14, fill: "none",
+                stroke: "var(--gog-text-muted)", strokeWidth: 2,
+              }} viewBox="0 0 24 24">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+              <span>
+                Files will be saved to{" "}
+                <code>{downloadBase || "/downloads"}</code>
+              </span>
+            </div>
+            <div style={{
+              fontSize: "0.75rem",
+              color: "var(--gog-text-muted)",
+              maxWidth: 420,
+            }}>
+              To change this location, adjust the Docker volume mapping for
+              <code style={{ marginLeft: 4, marginRight: 4 }}>/downloads</code>
+              or set the
+              <code style={{ marginLeft: 4, marginRight: 4 }}>DOWNLOAD_PATH</code>
+              environment variable before starting the container.
+            </div>
+          </div>
 
           <div className="spacer" style={{ flex: 1 }} />
 

@@ -46,14 +46,13 @@ export async function getDownloadPath() {
   return r.json();
 }
 
-export async function startDownload(gameIds, path, includeBonus = true) {
+export async function startDownload(gameIds, includeBonus = true) {
   const r = await fetch(`${API_BASE}/api/download`, {
     ...fetchOpts(),
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       gameIds,
-      path: path || ".",
       includeBonus,
     }),
   });
