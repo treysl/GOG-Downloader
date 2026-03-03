@@ -10,4 +10,7 @@ services:
       - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-http://localhost:8080}
       - DOWNLOAD_PATH=/downloads
     volumes:
-      - C:\Users\treyl\Downloads:/downloads
+      - downloads:/downloads
+
+volumes:
+  downloads:
