@@ -360,8 +360,8 @@ function Library() {
           </div>
         )}
 
-        {/* ─── Completed downloads ─── */}
-        {status?.completed?.length > 0 && (
+        {/* ─── Completed downloads (only when job is finished) ─── */}
+        {status?.completed?.length > 0 && status.status === "idle" && (
           <div role="status" style={{
             padding: "0.75rem 1rem",
             background: "var(--gog-green-bg)",
@@ -377,16 +377,25 @@ function Library() {
 
         {/* ─── Failed downloads ─── */}
         {status?.failed?.length > 0 && (
-          <div role="alert" style={{
-            padding: "0.75rem 1rem",
-            background: "var(--gog-red-bg)",
-            border: "1px solid rgba(217,69,69,0.3)",
-            borderRadius: "var(--gog-radius)",
-            marginBottom: "1rem",
-            fontSize: "0.85rem",
-          }}>
+          <div
+            role="alert"
+            style={{
+              padding: "0.75rem 1rem",
+              background: "var(--gog-red-bg)",
+              border: "1px solid rgba(217,69,69,0.3)",
+              borderRadius: "var(--gog-radius)",
+              marginBottom: "1rem",
+              fontSize: "0.85rem",
+            }}
+          >
             <strong>Failed:</strong>{" "}
-            {status.failed.map((f) => f.file || f.game_id).join(", ")}
+            {status.failed
+              .map((f) => {
+                const name = f.file || f.game_id;
+                const err = f.error ? ` (${f.error})` : "";
+                return `${name}${err}`;
+              })
+              .join(", ")}
           </div>
         )}
 
