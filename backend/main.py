@@ -2,6 +2,7 @@
 FastAPI app: auth, CORS, and route wiring.
 """
 import os
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -31,7 +32,13 @@ FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    static_dir = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+    if getattr(sys, "frozen", False):
+        # Running as a PyInstaller bundle — data files land in sys._MEIPASS
+        base = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    else:
+        # Development — main.py lives in backend/, frontend/dist is one level up
+        base = Path(__file__).resolve().parent.parent
+    static_dir = base / "frontend" / "dist"
     if static_dir.is_dir():
         app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
     yield

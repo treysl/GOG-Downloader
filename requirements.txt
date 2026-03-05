@@ -1,0 +1,18 @@
+# Python dependencies for GOG Downloader (backend + Windows launcher)
+#
+# Install with:  pip install -r requirements.txt
+# Then build:    pyinstaller launcher.spec --noconfirm
+
+# ── Backend (FastAPI server) ──────────────────────────────────────────────────
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+httpx>=0.25.0
+python-multipart>=0.0.6
+itsdangerous>=2.1.0
+
+# ── Windows launcher (tray icon + icon generation) ────────────────────────────
+pystray>=0.19.5
+pillow>=10.0.0
+
+# ── Build tool (produces dist\GOG-Downloader\) ────────────────────────────────
+pyinstaller>=6.0.0

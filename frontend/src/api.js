@@ -34,8 +34,8 @@ export function getLogoutUrl() {
   return `${API_BASE}/auth/logout`;
 }
 
-export async function getLibrary(search = null, page = 1, sortBy = "title") {
-  const params = new URLSearchParams({ page: String(page), sortBy });
+export async function getLibrary(search = null, page = 1) {
+  const params = new URLSearchParams({ page: String(page) });
   if (search) params.set("search", search);
   const r = await fetch(`${API_BASE}/api/library?${params}`, fetchOpts());
   if (!r.ok) throw new Error(r.status === 401 ? "Not logged in" : await r.text());
@@ -45,6 +45,20 @@ export async function getLibrary(search = null, page = 1, sortBy = "title") {
 export async function getDownloadPath() {
   const r = await fetch(`${API_BASE}/api/downloads/path`, fetchOpts());
   if (!r.ok) throw new Error(r.status === 401 ? "Not logged in" : await r.text());
+  return r.json();
+}
+
+export async function setDownloadPath(path) {
+  const r = await fetch(`${API_BASE}/api/downloads/path`, {
+    ...fetchOpts(),
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: r.statusText }));
+    throw new Error(err.detail || "Failed to update download path");
+  }
   return r.json();
 }
 

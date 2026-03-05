@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from pydantic import BaseModel
 
 from auth import is_token_expired, refresh_tokens
+from config import get_download_path, set_download_path
 from deps import get_valid_token, COOKIE_NAME
 from session_store import get_session, set_session
 
@@ -22,9 +23,6 @@ class DownloadRequest(BaseModel):
     path: str = "."
     includeBonus: bool = True
 API_BASE = "https://api.gog.com"
-
-# Base path allowed for downloads (env DOWNLOAD_PATH, default /downloads)
-DOWNLOAD_BASE = os.environ.get("DOWNLOAD_PATH", "/downloads")
 
 # session_id -> download state
 _download_state: Dict[str, Dict[str, Any]] = {}
@@ -55,8 +53,8 @@ def _safe_filename(name: str) -> str:
 
 
 def _resolve_path(user_path: str, session_id: str) -> Path:
-    """Resolve and validate that user_path is under DOWNLOAD_BASE."""
-    base = Path(DOWNLOAD_BASE).resolve()
+    """Resolve and validate that user_path is under the configured download base."""
+    base = Path(get_download_path()).resolve()
     try:
         full = (base / user_path.lstrip("/")).resolve()
     except Exception:
@@ -390,9 +388,29 @@ async def start_download(
 
 
 @router.get("/downloads/path")
-async def get_download_path():
-    """Return the configured download base path (for UI display)."""
-    return {"path": DOWNLOAD_BASE}
+async def get_download_path_endpoint(token: str = Depends(get_valid_token)):
+    """Return the configured download base path."""
+    return {"path": get_download_path()}
+
+
+@router.put("/downloads/path")
+async def set_download_path_endpoint(
+    body: dict,
+    token: str = Depends(get_valid_token),
+):
+    """Update the download base path.  Creates the directory if it does not exist."""
+    new_path = (body.get("path") or "").strip()
+    if not new_path:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="path is required")
+    target = Path(new_path)
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=f"Cannot create directory: {exc}")
+    set_download_path(str(target.resolve()))
+    return {"path": get_download_path()}
 
 
 def _list_dir_safe(base: Path, subpath: str) -> Path:
@@ -420,7 +438,7 @@ async def list_download_files(
     List contents of the download folder (and optional subpath).
     Returns entries with name, path (relative to base), size (files only), isDir.
     """
-    base = Path(DOWNLOAD_BASE).resolve()
+    base = Path(get_download_path()).resolve()
     full = _list_dir_safe(base, path)
     entries = []
     try:
@@ -438,5 +456,5 @@ async def list_download_files(
     return {
         "path": str(full.relative_to(base)).replace("\\", "/") if full != base else "",
         "entries": entries,
-        "basePath": DOWNLOAD_BASE,
+        "basePath": get_download_path(),
     }

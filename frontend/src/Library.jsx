@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   getLibrary,
   getDownloadPath,
+  setDownloadPath,
   startDownload,
   getDownloadStatus,
   cancelDownload,
@@ -30,15 +31,14 @@ function Library() {
   const [searchInput, setSearchInput] = useState("");
   const [selected, setSelected] = useState(new Set());
   const [downloadBase, setDownloadBase] = useState("");
+  const [pathInput, setPathInput] = useState("");
+  const [pathSaveStatus, setPathSaveStatus] = useState(""); // "" | "saving" | "saved" | error text
   const [includeBonus, setIncludeBonus] = useState(true);
   const [status, setStatus] = useState(null);
   const [downloading, setDownloading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-
-  // ── Sorting ────────────────────────────────────────────────────────────────
-  const [sortBy, setSortBy] = useState("title");
 
   // ── Tags ───────────────────────────────────────────────────────────────────
   const [allTags, setAllTags] = useState({});         // {name: {color}}
@@ -61,7 +61,7 @@ function Library() {
   const loadLibrary = useCallback(() => {
     setError("");
     setLoading(true);
-    getLibrary(search || undefined, page, sortBy)
+    getLibrary(search || undefined, page)
       .then((data) => {
         setProducts(data.products || []);
         setTotalPages(data.totalPages || 1);
@@ -69,14 +69,18 @@ function Library() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [search, page, sortBy]);
+  }, [search, page]);
 
   useEffect(() => { loadLibrary(); }, [loadLibrary]);
 
   useEffect(() => {
     getDownloadPath()
-      .then((data) => setDownloadBase(data.path || ""))
-      .catch(() => setDownloadBase(""));
+      .then((data) => {
+        const p = data.path || "";
+        setDownloadBase(p);
+        setPathInput(p);
+      })
+      .catch(() => {});
   }, []);
 
   const loadFiles = useCallback((subpath) => {
@@ -124,12 +128,12 @@ function Library() {
     setLoadingFilter(true);
     setFilteredProducts(null);
     const loadAll = async () => {
-      const first = await getLibrary(undefined, 1, sortBy);
+      const first = await getLibrary(undefined, 1);
       const all = [...first.products];
       if (first.totalPages > 1) {
         const rest = await Promise.all(
           Array.from({ length: first.totalPages - 1 }, (_, i) =>
-            getLibrary(undefined, i + 2, sortBy)
+            getLibrary(undefined, i + 2)
           )
         );
         rest.forEach((r) => all.push(...r.products));
@@ -138,7 +142,7 @@ function Library() {
       setLoadingFilter(false);
     };
     loadAll().catch((e) => { setError(e.message); setLoadingFilter(false); });
-  }, [filterTag, gameTags, sortBy]);
+  }, [filterTag, gameTags]);
 
   // ── Close tag picker when clicking outside ────────────────────────────────
   useEffect(() => {
@@ -179,9 +183,25 @@ function Library() {
 
   const doSearch = () => { setPage(1); setSearch(searchInput); setFilterTag(null); };
 
-  const onSortChange = (val) => { setSortBy(val); setPage(1); };
-
   const onTagFilter = (name) => setFilterTag((prev) => (prev === name ? null : name));
+
+  const onSavePath = () => {
+    const trimmed = pathInput.trim();
+    if (!trimmed) return;
+    setPathSaveStatus("saving");
+    setDownloadPath(trimmed)
+      .then((data) => {
+        const saved = data.path || trimmed;
+        setDownloadBase(saved);
+        setPathInput(saved);
+        setPathSaveStatus("saved");
+        setTimeout(() => setPathSaveStatus(""), 2000);
+      })
+      .catch((e) => {
+        setPathSaveStatus(e.message || "Error saving path");
+        setTimeout(() => setPathSaveStatus(""), 4000);
+      });
+  };
 
   const onStartDownload = () => {
     const ids = Array.from(selected);
@@ -354,27 +374,6 @@ function Library() {
           </div>
           <ToolBtn onClick={doSearch}>Search</ToolBtn>
 
-          {/* Sort dropdown */}
-          <select
-            aria-label="Sort library by"
-            value={sortBy}
-            onChange={(e) => onSortChange(e.target.value)}
-            style={{
-              padding: "0.55rem 0.75rem",
-              background: "var(--gog-bg-card)",
-              color: "var(--gog-text-secondary)",
-              border: "1px solid var(--gog-border)",
-              borderRadius: "var(--gog-radius)",
-              fontSize: "0.85rem",
-              cursor: "pointer",
-            }}
-          >
-            <option value="title">Sort: Title A→Z</option>
-            <option value="releaseDate">Sort: Release Date</option>
-            <option value="dateAdded">Sort: Date Added</option>
-            <option value="date_purchased">Sort: Date Purchased</option>
-          </select>
-
           <div style={{ width: 1, height: 28, background: "var(--gog-border)" }} />
           <ToolBtn onClick={selectAll}>Select all</ToolBtn>
           <ToolBtn onClick={selectNone}>Deselect all</ToolBtn>
@@ -480,36 +479,66 @@ function Library() {
 
           <div className="divider-v" style={{ width: 1, height: 24, background: "var(--gog-border)" }} />
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
-            <div style={{
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+            <label style={{
               display: "flex",
               alignItems: "center",
               gap: "0.5rem",
               fontSize: "0.85rem",
               color: "var(--gog-text-secondary)",
+              flexWrap: "wrap",
             }}>
               <svg aria-hidden="true" style={{
                 width: 14, height: 14, fill: "none",
-                stroke: "var(--gog-text-muted)", strokeWidth: 2,
+                stroke: "var(--gog-text-muted)", strokeWidth: 2, flexShrink: 0,
               }} viewBox="0 0 24 24">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
               </svg>
-              <span>
-                Files will be saved to{" "}
-                <code>{downloadBase || "/downloads"}</code>
-              </span>
-            </div>
-            <div style={{
-              fontSize: "0.75rem",
-              color: "var(--gog-text-muted)",
-              maxWidth: 420,
-            }}>
-              To change this location, adjust the Docker volume mapping for
-              <code style={{ marginLeft: 4, marginRight: 4 }}>/downloads</code>
-              or set the
-              <code style={{ marginLeft: 4, marginRight: 4 }}>DOWNLOAD_PATH</code>
-              environment variable before starting the container.
-            </div>
+              <span style={{ flexShrink: 0 }}>Save to:</span>
+              <input
+                type="text"
+                value={pathInput}
+                onChange={(e) => { setPathInput(e.target.value); setPathSaveStatus(""); }}
+                onKeyDown={(e) => { if (e.key === "Enter") onSavePath(); }}
+                placeholder="C:\Users\...\Downloads\GOG"
+                style={{
+                  flex: "1 1 260px",
+                  minWidth: 180,
+                  padding: "0.3rem 0.55rem",
+                  background: "var(--gog-bg-deep)",
+                  color: "var(--gog-text)",
+                  border: "1px solid var(--gog-border)",
+                  borderRadius: "var(--gog-radius-sm)",
+                  fontSize: "0.83rem",
+                  fontFamily: "monospace",
+                }}
+              />
+              <button
+                type="button"
+                onClick={onSavePath}
+                disabled={pathSaveStatus === "saving" || !pathInput.trim()}
+                style={{
+                  padding: "0.3rem 0.7rem",
+                  fontSize: "0.8rem",
+                  background: pathSaveStatus === "saved"
+                    ? "var(--gog-green, #4c994a)"
+                    : "var(--gog-purple)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "var(--gog-radius-sm)",
+                  cursor: pathSaveStatus === "saving" ? "wait" : "pointer",
+                  flexShrink: 0,
+                  transition: "background 0.2s",
+                }}
+              >
+                {pathSaveStatus === "saving" ? "Saving…" : pathSaveStatus === "saved" ? "Saved ✓" : "Save"}
+              </button>
+            </label>
+            {pathSaveStatus && pathSaveStatus !== "saving" && pathSaveStatus !== "saved" && (
+              <div style={{ fontSize: "0.75rem", color: "var(--gog-red)", marginLeft: "1.5rem" }}>
+                {pathSaveStatus}
+              </div>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -520,8 +549,8 @@ function Library() {
                 }
               }}
               style={{
-                marginLeft: "0.75rem",
-                padding: "0.35rem 0.6rem",
+                alignSelf: "flex-start",
+                padding: "0.3rem 0.6rem",
                 fontSize: "0.75rem",
                 background: "var(--gog-bg-deep)",
                 color: "var(--gog-text-secondary)",

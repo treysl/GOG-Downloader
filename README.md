@@ -1,48 +1,93 @@
 ## GOG Offline Library Downloader
 
-**Self-hosted web app to browse your GOG library and download offline installers and bonus content to a local folder.**
+**Portable Windows app to browse your GOG library and download offline installers and bonus content to any folder you choose.**
 
 ### What it does
 
-- **Shows your GOG games** in a simple grid.
-- **Lets you pick games and extras** to download.
-- **Saves files to a folder you control** on your machine.
+- Shows your GOG games in a grid.
+- Lets you pick games and extras to download.
+- Saves files to a folder you control — change it live from the UI.
+- Runs entirely on your machine; nothing is uploaded anywhere.
 
-### How to start (Docker)
+---
+
+### Quick start
+
+1. Download and unzip `GOG-Downloader.zip`.
+2. Double-click **`GOG-Downloader.exe`**.
+3. A purple **G** icon appears in the system tray (bottom-right of the taskbar). Your browser opens automatically to `http://localhost:8080`.
+4. Log in to GOG (see below), select games, and click **Download**.
+
+To quit the app, right-click the tray icon and choose **Exit**.  
+To reopen the browser at any time, double-click the tray icon or choose **Open Browser**.
+
+---
+
+### How to log in to GOG
+
+1. On the login screen, click **Open GOG login**. A new tab to `auth.gog.com` opens.
+2. Sign in with your GOG account.
+3. After login you land on a mostly blank `embed.gog.com` page. Copy the **entire URL** from the address bar (<kbd>Ctrl+L</kbd> then <kbd>Ctrl+C</kbd>).
+4. Go back to the downloader tab:
+   - Click **Paste URL & Login** to let the app read the URL from your clipboard, or
+   - Paste the URL into the text box and click **Submit**.
+5. The page switches to your library. Search, select games, and start downloads. Use **Sign out** in the top-right corner when you are done.
+
+---
+
+### Changing the download folder
+
+The **Save to** field in the download options bar shows the current download location. Type any absolute path (e.g. `D:\Games\GOG`) and click **Save** (or press <kbd>Enter</kbd>). The folder is created automatically if it does not exist. The setting persists across restarts.
+
+Default location: `%USERPROFILE%\Downloads\GOG`
+
+---
+
+### Building from source
+
+Requirements: **Node.js 20+**, **Python 3.11+**, and **pip** on your `PATH`.
+
+```powershell
+git clone https://github.com/yourname/GOG-Docker-Downloader.git
+cd GOG-Docker-Downloader
+.\build.ps1
+```
+
+The script:
+1. Runs `npm install && npm run build` inside `frontend/`.
+2. Runs `pip install -r requirements.txt`.
+3. Packages everything with PyInstaller.
+
+Output is in `dist\GOG-Downloader\`. Zip that folder to share.
+
+---
+
+### Running in development (no build required)
+
+**Backend:**
+```powershell
+cd backend
+pip install -r ..\requirements.txt
+$env:DOWNLOAD_PATH = "$env:USERPROFILE\Downloads\GOG"
+uvicorn main:app --host 127.0.0.1 --port 8080 --reload
+```
+
+**Frontend** (in a second terminal):
+```powershell
+cd frontend
+npm install
+npm run dev   # Vite dev server on http://localhost:5173 with proxy to :8080
+```
+
+---
+
+### Docker (legacy)
+
+Docker is no longer the primary distribution method but the configuration is still present if needed.
 
 ```bash
 cp .env.example .env
 docker-compose up --build
 ```
 
-Then open **http://localhost:8080** in your browser, log in to GOG (see below), select games, and click **Download**.
-
-### How to log in to GOG
-
-1. In your browser, open **http://localhost:8080** and wait for the login screen.
-2. Click **Open GOG login**. A new tab to `auth.gog.com` will open.
-3. Sign in with your GOG account as usual.  
-4. After login you will land on a mostly blank `embed.gog.com` page. Copy the **entire URL** from the address bar (for example with <kbd>Ctrl+L</kbd> then <kbd>Ctrl+C</kbd> / <kbd>Cmd+L</kbd> then <kbd>Cmd+C</kbd>).
-5. Go back to the downloader tab:
-   - Either click **Paste URL & Login** to let the app read the URL from your clipboard, or  
-   - Paste the URL into the text box and click **Submit**.
-6. When login succeeds, the page will switch to your library view. You can now search, select games, and start downloads. Use **Sign out** in the top-right corner when you’re done.
-
-### Where downloads are saved
-
-- **Default location (current setup)**  
-  Downloads are stored in a Docker named volume mounted at `/downloads` inside the container.
-
-- **Change destination on the host**  
-  Edit `docker-compose.yml` to mount a host folder instead of the named volume:
-
-  ```yaml
-  services:
-    app:
-      # ...
-      volumes:
-        - C:/path/on/your/pc:/downloads
-  ```
-
-- **Change folder inside the app**  
-  In the web UI, use the **Download path** field in the toolbar to choose a different subfolder under `/downloads` (or your mapped host folder).
+Downloads are written to `./downloads` on the host (or override with a volume mapping in `docker-compose.yml`).

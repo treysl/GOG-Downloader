@@ -1,3 +1,6 @@
+# NOTE: Docker support is no longer the primary distribution method.
+# Use the portable Windows build instead — see README for instructions.
+
 # Build frontend
 FROM node:20-alpine AS frontend
 WORKDIR /app/frontend

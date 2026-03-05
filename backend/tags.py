@@ -9,17 +9,15 @@ Data layout on disk:
   }
 """
 import json
-import os
 from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from config import get_download_path
 from deps import COOKIE_NAME
 from session_store import get_session
-
-DOWNLOAD_BASE = os.environ.get("DOWNLOAD_PATH", "/downloads")
 
 _PALETTE = [
     "#7e4dd2", "#4c994a", "#d94545", "#d97b45",
@@ -33,7 +31,7 @@ router = APIRouter()
 # ── helpers ─────────────────────────────────────────────────────────────────
 
 def _tags_file() -> Path:
-    return Path(DOWNLOAD_BASE) / ".gog_tags.json"
+    return Path(get_download_path()) / ".gog_tags.json"
 
 
 def _load() -> dict:
