@@ -8,7 +8,34 @@ import os
 import sys
 import threading
 import time
+import traceback
 import webbrowser
+
+
+# ── Logging / stdout fix for windowed exe ────────────────────────────────────
+# PyInstaller windowed apps have sys.stdout = None, which breaks uvicorn's log
+# formatter (.isatty() call). Redirect both streams to a log file so the
+# server can start and errors are still inspectable.
+
+_LOG_DIR = os.path.join(os.path.expanduser("~"), ".gog-downloader")
+_LOG_FILE = os.path.join(_LOG_DIR, "launcher.log")
+
+if getattr(sys, "frozen", False):
+    os.makedirs(_LOG_DIR, exist_ok=True)
+    _log_io = open(_LOG_FILE, "a", encoding="utf-8", buffering=1)
+    if sys.stdout is None:
+        sys.stdout = _log_io
+    if sys.stderr is None:
+        sys.stderr = _log_io
+
+
+def _log(msg: str) -> None:
+    try:
+        import datetime
+        with open(_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.datetime.now().isoformat()}] {msg}\n")
+    except Exception:
+        pass
 
 
 # ── Path helpers ──────────────────────────────────────────────────────────────
@@ -36,8 +63,11 @@ os.environ.setdefault("FRONTEND_ORIGIN", "http://localhost:8080")
 _default_dl = os.path.join(os.path.expanduser("~"), "Downloads", "GOG")
 os.environ.setdefault("DOWNLOAD_PATH", _default_dl)
 
-# Make backend modules importable
-sys.path.insert(0, os.path.join(_base, "backend"))
+# When running as source, make the backend package importable.
+# When frozen by PyInstaller the backend modules are compiled into the bundle
+# at the top level, so no extra path manipulation is needed.
+if not getattr(sys, "frozen", False):
+    sys.path.insert(0, os.path.join(_base, "backend"))
 
 
 # ── Server ────────────────────────────────────────────────────────────────────
@@ -47,10 +77,16 @@ URL = f"http://localhost:{PORT}"
 
 
 def _start_server() -> None:
-    import uvicorn
-    from main import app  # noqa: F401 – imported for side-effects (route registration)
+    try:
+        _log("Importing uvicorn and FastAPI app...")
+        import uvicorn
+        from main import app  # noqa: F401
 
-    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
+        _log("Starting uvicorn on 127.0.0.1:8080")
+        uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
+    except Exception:
+        _log("SERVER CRASHED:\n" + traceback.format_exc())
+        raise
 
 
 # ── Tray icon ─────────────────────────────────────────────────────────────────
@@ -61,9 +97,7 @@ def _make_icon_image():
     size = 64
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    # GOG-purple circle
     draw.ellipse([2, 2, size - 2, size - 2], fill=(126, 77, 210, 255))
-    # "G" label — use default font (no external font file needed)
     try:
         font = ImageFont.truetype("arial.ttf", 32)
     except OSError:
@@ -108,16 +142,19 @@ def _run_tray() -> None:
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    # Start uvicorn in a background daemon thread
+    _log("=== Launcher starting ===")
+
     server_thread = threading.Thread(target=_start_server, daemon=True)
     server_thread.start()
 
-    # Open the browser shortly after the server has had time to start
     def _delayed_open() -> None:
-        time.sleep(1.5)
+        time.sleep(2.0)
         _open_browser()
 
     threading.Thread(target=_delayed_open, daemon=True).start()
 
-    # Block on the tray icon (runs the Win32 message loop)
-    _run_tray()
+    try:
+        _run_tray()
+    except Exception:
+        _log("TRAY CRASHED:\n" + traceback.format_exc())
+        raise
