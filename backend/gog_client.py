@@ -5,7 +5,7 @@ import re
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from deps import get_valid_token
 
@@ -13,6 +13,11 @@ EMBED_BASE = "https://embed.gog.com"
 API_BASE = "https://api.gog.com"
 
 router = APIRouter()
+
+# sortBy values known to work with embed.gog.com/account/getFilteredProducts
+# (rating is not supported and causes 500; map it to date_purchased)
+LIBRARY_SORT_WHITELIST = {"title", "releaseDate", "dateAdded", "date_purchased"}
+LIBRARY_SORT_DEFAULT = "title"
 
 # Matches a 64-char hex string (GOG image hash)
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -53,20 +58,39 @@ def _normalize_image(url: Optional[str]) -> str:
 async def get_library(
     search: Optional[str] = None,
     page: int = 1,
+    sortBy: str = "title",
     token: str = Depends(get_valid_token),
 ):
     """Return user's library (owned games) with thumbnails for the grid."""
-    params = {"mediaType": 1, "page": page}  # 1 = games
+    # Only pass sortBy values that GOG accepts; rating is not supported
+    sort_by = sortBy.strip() if sortBy else ""
+    if sort_by not in LIBRARY_SORT_WHITELIST:
+        sort_by = LIBRARY_SORT_DEFAULT
+    params = {"mediaType": 1, "page": page, "sortBy": sort_by}
     if search:
         params["search"] = search
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{EMBED_BASE}/account/getFilteredProducts",
-            params=params,
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{EMBED_BASE}/account/getFilteredProducts",
+                params=params,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPStatusError as e:
+        detail = f"GOG API error: {e.response.status_code}"
+        try:
+            body = e.response.json()
+            if isinstance(body, dict) and "detail" in body:
+                detail = body["detail"]
+            elif isinstance(body, dict) and "message" in body:
+                detail = body["message"]
+        except Exception:
+            pass
+        raise HTTPException(status_code=502, detail=detail)
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"GOG API request failed: {e!s}")
 
     products = data.get("products", [])
     for p in products:

@@ -2,6 +2,7 @@
 FastAPI app: auth, CORS, and route wiring.
 """
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -27,7 +28,16 @@ from session_store import (
 COOKIE_NAME = "gog_session"
 FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
 
-app = FastAPI(title="GOG Offline Library Downloader")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    static_dir = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+    if static_dir.is_dir():
+        app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+    yield
+
+
+app = FastAPI(title="GOG Offline Library Downloader", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,17 +50,6 @@ app.add_middleware(
 
 def get_session_id(request: Request) -> Optional[str]:
     return request.cookies.get(COOKIE_NAME)
-
-
-def require_session(request: Request) -> dict:
-    """Dependency: require valid session with tokens; raise 401 if not logged in."""
-    session_id = get_session_id(request)
-    if not session_id:
-        raise HTTPException(status_code=401, detail="Not logged in")
-    session = get_session(session_id)
-    if not session or not session.get("access_token"):
-        raise HTTPException(status_code=401, detail="Not logged in")
-    return session
 
 
 # ---------- Auth routes ----------
@@ -201,15 +200,11 @@ async def health():
 
 from gog_client import router as gog_router
 from downloader import router as download_router
+from tags import router as tags_router
 
 app.include_router(gog_router, prefix="/api", tags=["api"])
 app.include_router(download_router, prefix="/api", tags=["downloads"])
+app.include_router(tags_router, prefix="/api", tags=["tags"])
 
 
-# ---------- Static files (frontend) - last so SPA catch-all works ----------
-
-@app.on_event("startup")
-def _mount_static():
-    static_dir = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-    if static_dir.is_dir():
-        app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+# ---------- Static files (frontend) - mounted in lifespan ----------

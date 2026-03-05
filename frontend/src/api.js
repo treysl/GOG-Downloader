@@ -6,6 +6,7 @@ function fetchOpts(extra = {}) {
 
 export async function getAuthStatus() {
   const r = await fetch(`${API_BASE}/auth/status`, fetchOpts());
+  if (!r.ok) throw new Error(r.status === 401 ? "Not logged in" : await r.text());
   return r.json();
 }
 
@@ -33,8 +34,8 @@ export function getLogoutUrl() {
   return `${API_BASE}/auth/logout`;
 }
 
-export async function getLibrary(search = null, page = 1) {
-  const params = new URLSearchParams({ page: String(page) });
+export async function getLibrary(search = null, page = 1, sortBy = "title") {
+  const params = new URLSearchParams({ page: String(page), sortBy });
   if (search) params.set("search", search);
   const r = await fetch(`${API_BASE}/api/library?${params}`, fetchOpts());
   if (!r.ok) throw new Error(r.status === 401 ? "Not logged in" : await r.text());
@@ -43,6 +44,7 @@ export async function getLibrary(search = null, page = 1) {
 
 export async function getDownloadPath() {
   const r = await fetch(`${API_BASE}/api/downloads/path`, fetchOpts());
+  if (!r.ok) throw new Error(r.status === 401 ? "Not logged in" : await r.text());
   return r.json();
 }
 
@@ -65,5 +67,90 @@ export async function startDownload(gameIds, includeBonus = true) {
 
 export async function getDownloadStatus() {
   const r = await fetch(`${API_BASE}/api/downloads/status`, fetchOpts());
+  if (!r.ok) throw new Error(r.status === 401 ? "Not logged in" : await r.text());
+  return r.json();
+}
+
+export async function getDownloadFiles(subpath = "") {
+  const url = subpath
+    ? `${API_BASE}/api/downloads/files?path=${encodeURIComponent(subpath)}`
+    : `${API_BASE}/api/downloads/files`;
+  const r = await fetch(url, fetchOpts());
+  if (!r.ok) throw new Error(r.status === 401 ? "Not logged in" : await r.text());
+  return r.json();
+}
+
+// ── Tag API ──────────────────────────────────────────────────────────────────
+
+export async function getAllTags() {
+  const r = await fetch(`${API_BASE}/api/tags`, fetchOpts());
+  if (!r.ok) throw new Error("Failed to load tags");
+  return r.json();
+}
+
+export async function createTagApi(name, color) {
+  const r = await fetch(`${API_BASE}/api/tags`, {
+    ...fetchOpts(),
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, color }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: r.statusText }));
+    throw new Error(err.detail || "Failed to create tag");
+  }
+  return r.json();
+}
+
+export async function updateTagApi(name, updates) {
+  const r = await fetch(`${API_BASE}/api/tags/${encodeURIComponent(name)}`, {
+    ...fetchOpts(),
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: r.statusText }));
+    throw new Error(err.detail || "Failed to update tag");
+  }
+  return r.json();
+}
+
+export async function deleteTagApi(name) {
+  const r = await fetch(`${API_BASE}/api/tags/${encodeURIComponent(name)}`, {
+    ...fetchOpts(),
+    method: "DELETE",
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: r.statusText }));
+    throw new Error(err.detail || "Failed to delete tag");
+  }
+}
+
+export async function setGameTagsApi(productId, tags) {
+  const r = await fetch(`${API_BASE}/api/games/${productId}/tags`, {
+    ...fetchOpts(),
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tags }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: r.statusText }));
+    throw new Error(err.detail || "Failed to update game tags");
+  }
+  return r.json();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function cancelDownload() {
+  const r = await fetch(`${API_BASE}/api/downloads/cancel`, {
+    ...fetchOpts(),
+    method: "POST",
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: r.statusText }));
+    throw new Error(err.detail || "Cancel failed");
+  }
   return r.json();
 }

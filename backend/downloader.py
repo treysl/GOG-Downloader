@@ -10,7 +10,9 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from pydantic import BaseModel
 
+from auth import is_token_expired, refresh_tokens
 from deps import get_valid_token, COOKIE_NAME
+from session_store import get_session, set_session
 
 router = APIRouter()
 
@@ -27,6 +29,24 @@ DOWNLOAD_BASE = os.environ.get("DOWNLOAD_PATH", "/downloads")
 # session_id -> download state
 _download_state: Dict[str, Dict[str, Any]] = {}
 
+# Placeholder filename so the UI shows all games in the queue before we fetch their file lists
+_QUEUED_PLACEHOLDER = "(queued)"
+
+
+def _replace_queued_placeholder_with_files(
+    state: Dict[str, Any], game_id: int, title: str, files: List[Tuple[str, str, int]]
+) -> None:
+    """Replace the single '(queued)' placeholder for this game with real file entries (keeps queue order)."""
+    q = state.get("queue", [])
+    for i, entry in enumerate(q):
+        if entry.get("game_id") == game_id and entry.get("filename") == _QUEUED_PLACEHOLDER:
+            new_entries = [
+                {"game_id": game_id, "game_title": title, "filename": filename}
+                for _, filename, _ in files
+            ]
+            state["queue"] = q[:i] + new_entries + q[i + 1:]
+            return
+
 
 def _safe_filename(name: str) -> str:
     """Remove path-unsafe characters from a filename."""
@@ -41,9 +61,21 @@ def _resolve_path(user_path: str, session_id: str) -> Path:
         full = (base / user_path.lstrip("/")).resolve()
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid path")
-    if not str(full).startswith(str(base)):
+    if not full.is_relative_to(base):
         raise HTTPException(status_code=400, detail="Path must be under download base")
     return full
+
+
+async def _get_fresh_token(session_id: str) -> str:
+    """Return a valid GOG access token for the session, refreshing it if expired."""
+    session = get_session(session_id)
+    if not session or not session.get("access_token"):
+        raise RuntimeError("Session not found; please log in again")
+    if is_token_expired(session.get("expires_at", 0)):
+        new_tokens = await refresh_tokens(session["refresh_token"])
+        set_session(session_id, new_tokens)
+        return new_tokens["access_token"]
+    return session["access_token"]
 
 
 async def _run_download_job(
@@ -51,32 +83,56 @@ async def _run_download_job(
     game_ids: List[int],
     base_path: Path,
     include_bonus: bool,
-    token: str,
 ):
-    """Background job: for each game, fetch product downloads and stream files to base_path."""
+    """Background job: sequentially download every file for each game."""
     state = _download_state.get(session_id)
     if not state:
         return
     state["status"] = "downloading"
     state["failed"] = []
+    state["queue"] = []
+    state["cancel_requested"] = False
 
-    # Reuse a single HTTP client for the whole job so cookies/redirects
-    # are preserved and we keep a consistent User-Agent.
     async with httpx.AsyncClient(
         headers={
             "User-Agent": "GOGGalaxyClient/2.0.58.16",
             "Accept": "*/*",
-            # Disable gzip compression for large binaries – we just want the raw stream.
             "Accept-Encoding": "identity",
             "Referer": "https://www.gog.com/",
         },
         follow_redirects=True,
         timeout=httpx.Timeout(30.0, connect=10.0),
     ) as client:
+        # Pre-populate queue with one entry per game so the UI shows all selected games immediately.
         for game_id in game_ids:
+            if state.get("cancel_requested"):
+                break
+            try:
+                token = await _get_fresh_token(session_id)
+                r = await client.get(
+                    f"{API_BASE}/products/{game_id}",
+                    params={"expand": "downloads"},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                r.raise_for_status()
+                data = r.json()
+                title = data.get("title") or data.get("slug") or f"Game {game_id}"
+            except Exception:
+                title = f"Game {game_id}"
+            state["queue"].append({
+                "game_id": game_id,
+                "game_title": title,
+                "filename": _QUEUED_PLACEHOLDER,
+            })
+
+        for game_idx, game_id in enumerate(game_ids):
+            if state.get("cancel_requested"):
+                break
             state["current_game_id"] = game_id
             state["current_game_title"] = ""
+            state["pending_games"] = len(game_ids) - game_idx
             try:
+                token = await _get_fresh_token(session_id)
                 r = await client.get(
                     f"{API_BASE}/products/{game_id}",
                     params={"expand": "downloads"},
@@ -86,6 +142,7 @@ async def _run_download_job(
                 data = r.json()
             except Exception as e:
                 state["failed"].append({"game_id": game_id, "error": str(e)})
+                _replace_queued_placeholder_with_files(state, game_id, f"Game {game_id}", [])
                 continue
 
             slug = data.get("slug") or f"game_{game_id}"
@@ -94,13 +151,12 @@ async def _run_download_job(
             game_dir = base_path / _safe_filename(slug)
             game_dir.mkdir(parents=True, exist_ok=True)
 
-            # Collect all files to download: installers + optionally bonus
             downloads = data.get("downloads", {})
             files_to_download: List[Tuple[str, str, int]] = []  # (downlink, filename, size)
             for inst in downloads.get("installers", []):
                 inst_name = _safe_filename(inst.get("name", "installer"))
                 os_type = inst.get("os", "").lower()
-                ext = ".exe" if "win" in os_type else ".sh" if "mac" in os_type or "osx" in os_type else ".bin"
+                ext = ".exe" if "win" in os_type else ".pkg" if "mac" in os_type or "osx" in os_type else ".sh"
                 for i, f in enumerate(inst.get("files", [])):
                     downlink = f.get("downlink")
                     if downlink:
@@ -121,15 +177,28 @@ async def _run_download_job(
                                 )
                             )
 
+            # Replace the "(queued)" placeholder with real file entries for this game (keeps queue order).
+            _replace_queued_placeholder_with_files(state, game_id, title, files_to_download)
+
             for downlink, filename, size in files_to_download:
+                # Stop immediately if a cancel was requested between files.
+                if state.get("cancel_requested"):
+                    break
+
+                # Pop the front of the queue as this file becomes active.
+                if state["queue"] and state["queue"][0].get("filename") == filename:
+                    state["queue"].pop(0)
+
                 state["current_file"] = filename
                 state["bytes_total"] = size
                 state["bytes_done"] = 0
                 out_path = game_dir / filename
                 try:
-                    # Step 1: call the API downlink endpoint, which returns JSON
-                    # with the real CDN URL under "downlink".
+                    # Resolve the real CDN URL from the GOG downlink endpoint.
+                    # Refresh the token immediately before each API call so long
+                    # multi-part downloads don't hit 401s after the token expires.
                     try:
+                        token = await _get_fresh_token(session_id)
                         meta_resp = await client.get(
                             downlink,
                             headers={"Authorization": f"Bearer {token}"},
@@ -142,15 +211,19 @@ async def _run_download_job(
                     except Exception as e:
                         raise RuntimeError(f"Failed to resolve installer downlink: {e}")
 
-                    # Step 2: stream the actual binary from the CDN URL.
+                    cancelled_mid_stream = False
                     async with client.stream("GET", cdn_url) as resp:
                         resp.raise_for_status()
 
-                        # If GOG returns HTML / JSON here, it's almost certainly
-                        # an error page, not the actual installer.
                         ct = (resp.headers.get("content-type") or "").lower()
                         if "text/html" in ct or "application/json" in ct:
-                            snippet = (await resp.aread())[:1024]
+                            # Read only first 1KB for error message; never load full body into RAM
+                            snippet = b""
+                            async for chunk in resp.aiter_bytes(chunk_size=1024):
+                                snippet += chunk
+                                if len(snippet) >= 1024:
+                                    break
+                            snippet = snippet[:1024]
                             try:
                                 snippet_text = snippet.decode("utf-8", errors="ignore")
                             except Exception:
@@ -165,21 +238,26 @@ async def _run_download_job(
                         done = 0
                         with open(out_path, "wb") as fp:
                             async for chunk in resp.aiter_bytes(chunk_size=262144):
+                                if state.get("cancel_requested"):
+                                    cancelled_mid_stream = True
+                                    break
                                 fp.write(chunk)
                                 done += len(chunk)
                                 state["bytes_done"] = done
 
-                    # Sanity check: avoid leaving behind tiny/invalid files that
-                    # are actually HTML error pages or truncated downloads.
+                    if cancelled_mid_stream:
+                        try:
+                            out_path.unlink()
+                        except OSError:
+                            pass
+                        break  # exit the files loop; game loop will also break on next iteration
+
                     try:
                         actual_size = out_path.stat().st_size
                     except OSError:
                         actual_size = 0
 
-                    # Prefer the API-reported size when available
                     expected_size = size or total
-                    # If we know the expected size and the file is far smaller
-                    # than expected (e.g. <50%), treat it as a failed download.
                     if expected_size and actual_size < max(int(expected_size * 0.5), 1024):
                         try:
                             out_path.unlink()
@@ -200,8 +278,6 @@ async def _run_download_job(
 
                     state["completed"].append({"game_id": game_id, "title": title, "file": filename})
                 except Exception as e:
-                    # On failure, remove any partial file so users don't see
-                    # misleading tiny executables in their download folder.
                     try:
                         if out_path.exists():
                             out_path.unlink()
@@ -209,12 +285,15 @@ async def _run_download_job(
                         pass
                     state["failed"].append({"game_id": game_id, "file": filename, "error": str(e)})
 
-    state["status"] = "idle"
+    state["status"] = "cancelled" if state.get("cancel_requested") else "idle"
     state["current_game_id"] = None
     state["current_game_title"] = ""
     state["current_file"] = ""
     state["bytes_done"] = 0
     state["bytes_total"] = 0
+    state["pending_games"] = 0
+    state["queue"] = []
+    state["cancel_requested"] = False
 
 
 @router.get("/downloads/status")
@@ -232,8 +311,11 @@ async def get_download_status(request: Request):
             "current_file": "",
             "bytes_done": 0,
             "bytes_total": 0,
+            "pending_games": 0,
+            "queue": [],
             "completed": [],
             "failed": [],
+            "cancel_requested": False,
         }
     return {
         "status": state["status"],
@@ -242,9 +324,25 @@ async def get_download_status(request: Request):
         "current_file": state.get("current_file", ""),
         "bytes_done": state.get("bytes_done", 0),
         "bytes_total": state.get("bytes_total", 0),
+        "pending_games": state.get("pending_games", 0),
+        "queue": state.get("queue", []),
         "completed": state.get("completed", []),
         "failed": state.get("failed", []),
+        "cancel_requested": state.get("cancel_requested", False),
     }
+
+
+@router.post("/downloads/cancel")
+async def cancel_download(request: Request):
+    """Request cancellation of the active download job for this session."""
+    session_id = request.cookies.get(COOKIE_NAME)
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    state = _download_state.get(session_id)
+    if not state or state.get("status") not in ("queued", "downloading"):
+        raise HTTPException(status_code=400, detail="No active download to cancel")
+    state["cancel_requested"] = True
+    return {"status": "cancellation requested"}
 
 
 @router.post("/download")
@@ -274,8 +372,11 @@ async def start_download(
         "current_file": "",
         "bytes_done": 0,
         "bytes_total": 0,
+        "pending_games": len(game_ids),
+        "queue": [],
         "completed": [],
         "failed": [],
+        "cancel_requested": False,
     }
 
     background_tasks.add_task(
@@ -284,7 +385,6 @@ async def start_download(
         game_ids,
         base_path,
         include_bonus,
-        token,
     )
     return {"status": "started", "game_count": len(game_ids)}
 
@@ -292,4 +392,51 @@ async def start_download(
 @router.get("/downloads/path")
 async def get_download_path():
     """Return the configured download base path (for UI display)."""
-    return {"path": DOWNLOAD_BASE }
+    return {"path": DOWNLOAD_BASE}
+
+
+def _list_dir_safe(base: Path, subpath: str) -> Path:
+    """Resolve subpath under base; raise HTTPException if invalid or not a directory."""
+    base = base.resolve()
+    try:
+        full = (base / subpath.strip().strip("/")).resolve() if subpath.strip() else base
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not full.is_relative_to(base):
+        raise HTTPException(status_code=400, detail="Path must be under download base")
+    if not full.exists():
+        raise HTTPException(status_code=404, detail="Path not found")
+    if not full.is_dir():
+        raise HTTPException(status_code=400, detail="Not a directory")
+    return full
+
+
+@router.get("/downloads/files")
+async def list_download_files(
+    path: str = "",
+    token: str = Depends(get_valid_token),
+):
+    """
+    List contents of the download folder (and optional subpath).
+    Returns entries with name, path (relative to base), size (files only), isDir.
+    """
+    base = Path(DOWNLOAD_BASE).resolve()
+    full = _list_dir_safe(base, path)
+    entries = []
+    try:
+        for entry in sorted(full.iterdir(), key=lambda e: (not e.is_dir(), e.name.lower())):
+            rel = entry.relative_to(base)
+            size = entry.stat().st_size if entry.is_file() else None
+            entries.append({
+                "name": entry.name,
+                "path": str(rel).replace("\\", "/"),
+                "size": size,
+                "isDir": entry.is_dir(),
+            })
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Cannot list directory: {e}")
+    return {
+        "path": str(full.relative_to(base)).replace("\\", "/") if full != base else "",
+        "entries": entries,
+        "basePath": DOWNLOAD_BASE,
+    }

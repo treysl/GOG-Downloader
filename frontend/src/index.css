@@ -179,6 +179,28 @@ kbd {
   to { transform: rotate(360deg); }
 }
 
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.75); }
+}
+.queue-dot-pulse {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+/* ─── Queue sidebar ─── */
+.queue-sidebar {
+  width: 300px;
+  flex-shrink: 0;
+  background: var(--gog-bg-card);
+  border-left: 1px solid var(--gog-border);
+  position: sticky;
+  top: 56px;
+  height: calc(100vh - 56px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ─── Toolbar button hover ─── */
 .tool-btn:hover:not(:disabled) {
   background: var(--gog-bg-card-hover);
