@@ -59,6 +59,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name="GOG-Downloader",
+    icon=os.path.join(SPECPATH, "assets", "app.ico"),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

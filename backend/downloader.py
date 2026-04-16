@@ -3,6 +3,7 @@ Download worker: queue, stream files from GOG downlinks, progress state.
 """
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -190,6 +191,9 @@ async def _run_download_job(
                 state["current_file"] = filename
                 state["bytes_total"] = size
                 state["bytes_done"] = 0
+                state["speed_bps"] = 0
+                state["_speed_sample_time"] = time.monotonic()
+                state["_speed_sample_bytes"] = 0
                 out_path = game_dir / filename
                 try:
                     # Resolve the real CDN URL from the GOG downlink endpoint.
@@ -242,6 +246,15 @@ async def _run_download_job(
                                 fp.write(chunk)
                                 done += len(chunk)
                                 state["bytes_done"] = done
+                                now = time.monotonic()
+                                elapsed = now - state.get("_speed_sample_time", now)
+                                # Update a rolling speed estimate a few times per second.
+                                if elapsed >= 0.5:
+                                    prev_bytes = state.get("_speed_sample_bytes", 0)
+                                    delta = done - prev_bytes
+                                    state["speed_bps"] = max(0, int(delta / elapsed))
+                                    state["_speed_sample_time"] = now
+                                    state["_speed_sample_bytes"] = done
 
                     if cancelled_mid_stream:
                         try:
@@ -289,6 +302,7 @@ async def _run_download_job(
     state["current_file"] = ""
     state["bytes_done"] = 0
     state["bytes_total"] = 0
+    state["speed_bps"] = 0
     state["pending_games"] = 0
     state["queue"] = []
     state["cancel_requested"] = False
@@ -310,6 +324,7 @@ async def get_download_status(request: Request):
             "bytes_done": 0,
             "bytes_total": 0,
             "pending_games": 0,
+            "speed_bps": 0,
             "queue": [],
             "completed": [],
             "failed": [],
@@ -322,6 +337,7 @@ async def get_download_status(request: Request):
         "current_file": state.get("current_file", ""),
         "bytes_done": state.get("bytes_done", 0),
         "bytes_total": state.get("bytes_total", 0),
+        "speed_bps": state.get("speed_bps", 0),
         "pending_games": state.get("pending_games", 0),
         "queue": state.get("queue", []),
         "completed": state.get("completed", []),
@@ -370,6 +386,9 @@ async def start_download(
         "current_file": "",
         "bytes_done": 0,
         "bytes_total": 0,
+        "speed_bps": 0,
+        "_speed_sample_time": 0.0,
+        "_speed_sample_bytes": 0,
         "pending_games": len(game_ids),
         "queue": [],
         "completed": [],
