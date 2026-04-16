@@ -92,24 +92,16 @@ def _start_server() -> None:
 # ── Tray icon ─────────────────────────────────────────────────────────────────
 
 def _make_icon_image():
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
 
     size = 64
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    draw.ellipse([2, 2, size - 2, size - 2], fill=(126, 77, 210, 255))
-    try:
-        font = ImageFont.truetype("arial.ttf", 32)
-    except OSError:
-        font = ImageFont.load_default()
-    bbox = draw.textbbox((0, 0), "G", font=font)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    draw.text(
-        ((size - tw) / 2 - bbox[0], (size - th) / 2 - bbox[1]),
-        "G",
-        fill=(255, 255, 255, 255),
-        font=font,
-    )
+    # Modern, simple mark: rounded square + download arrow.
+    draw.rounded_rectangle([4, 4, size - 4, size - 4], radius=15, fill=(84, 54, 180, 255))
+    draw.rounded_rectangle([13, 13, size - 13, size - 13], radius=10, fill=(108, 72, 206, 255))
+    draw.line([(32, 18), (32, 38)], fill=(255, 255, 255, 255), width=6)
+    draw.polygon([(23, 34), (41, 34), (32, 46)], fill=(255, 255, 255, 255))
     return img
 
 

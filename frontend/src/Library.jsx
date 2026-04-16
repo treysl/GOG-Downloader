@@ -278,6 +278,10 @@ function Library() {
     if (n >= 1e3) return (n / 1e3).toFixed(1) + " KB";
     return n + " B";
   };
+  const formatSpeed = (bps) => {
+    if (!bps || bps <= 0) return "—";
+    return `${formatBytes(bps)}/s`;
+  };
 
   const pct = status?.bytes_total > 0
     ? Math.round((100 * status.bytes_done) / status.bytes_total)
@@ -814,6 +818,7 @@ function Library() {
       <QueueSidebar
         status={status}
         formatBytes={formatBytes}
+        formatSpeed={formatSpeed}
         downloading={downloading}
         cancelling={cancelling}
         onCancel={onCancelDownload}
@@ -1455,7 +1460,7 @@ function buildQueueGroups(status) {
   return groups;
 }
 
-function QueueSidebar({ status, formatBytes, downloading, cancelling, onCancel }) {
+function QueueSidebar({ status, formatBytes, formatSpeed, downloading, cancelling, onCancel }) {
   if (!status) return null;
   const isActive    = status.status === "downloading" || status.status === "queued";
   const isCancelled = status.status === "cancelled";
@@ -1575,7 +1580,7 @@ function QueueSidebar({ status, formatBytes, downloading, cancelling, onCancel }
               fontSize: "0.7rem", color: "var(--gog-text-muted)", marginTop: "0.25rem",
             }}>
               <span>{formatBytes(status.bytes_done)} / {formatBytes(status.bytes_total)}</span>
-              <span>{pct}%</span>
+              <span>{formatSpeed(status.speed_bps)} • {pct}%</span>
             </div>
           </div>
         )}

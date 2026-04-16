@@ -87,7 +87,8 @@ Docker is no longer the primary distribution method but the configuration is sti
 
 ```bash
 cp .env.example .env
-docker-compose up --build
+cd docker
+docker compose up --build
 ```
 
-Downloads are written to `./downloads` on the host (or override with a volume mapping in `docker-compose.yml`).
+Downloads are written to a Docker-managed volume by default (or override with a volume mapping in `docker/docker-compose.yml`).
