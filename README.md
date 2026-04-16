@@ -48,8 +48,8 @@ Default location: `%USERPROFILE%\Downloads\GOG`
 Requirements: **Node.js 20+**, **Python 3.11+**, and **pip** on your `PATH`.
 
 ```powershell
-git clone https://github.com/yourname/GOG-Docker-Downloader.git
-cd GOG-Docker-Downloader
+git clone https://github.com/yourname/GOG-Downloader.git
+cd GOG-Downloader
 .\build.ps1
 ```
 
