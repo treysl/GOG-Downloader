@@ -6,6 +6,7 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -79,16 +80,17 @@ async def auth_callback(
     """Handle OAuth callback: exchange code for tokens and redirect to frontend."""
     if error:
         # Redirect to frontend with error (e.g. user denied)
-        return RedirectResponse(url=f"{FRONTEND_ORIGIN}/?error={error}")
+        q = urlencode({"error": error})
+        return RedirectResponse(url=f"{FRONTEND_ORIGIN}/?{q}")
     if not code:
-        return RedirectResponse(url=f"{FRONTEND_ORIGIN}/?error=missing_code")
+        q = urlencode({"error": "missing_code"})
+        return RedirectResponse(url=f"{FRONTEND_ORIGIN}/?{q}")
 
     try:
         tokens = await exchange_code_for_tokens(code)
-    except Exception as e:
-        return RedirectResponse(
-            url=f"{FRONTEND_ORIGIN}/?error=token_exchange_failed"
-        )
+    except Exception:
+        q = urlencode({"error": "token_exchange_failed"})
+        return RedirectResponse(url=f"{FRONTEND_ORIGIN}/?{q}")
 
     session_id = create_session_id()
     set_session(session_id, tokens)

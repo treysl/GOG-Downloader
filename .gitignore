@@ -24,3 +24,8 @@ npm-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# Build output (PyInstaller)
+dist/
+build/
+*.spec.bak

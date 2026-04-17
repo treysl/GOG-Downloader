@@ -9,6 +9,10 @@
 - Saves files to a folder you control — change it live from the UI.
 - Runs entirely on your machine; nothing is uploaded anywhere.
 
+### Security model
+
+The portable app talks to your browser on **localhost** only (`127.0.0.1`). Your GOG session lives **in memory** while the app runs. The OAuth **client id / secret** in the repo are GOG’s **public** client values (not your account password). See [SECURITY.md](SECURITY.md) for the full policy, reporting process, and deployment notes.
+
 ---
 
 ### Quick start
@@ -78,17 +82,3 @@ cd frontend
 npm install
 npm run dev   # Vite dev server on http://localhost:5173 with proxy to :8080
 ```
-
----
-
-### Docker (legacy)
-
-Docker is no longer the primary distribution method but the configuration is still present if needed.
-
-```bash
-cp .env.example .env
-cd docker
-docker compose up --build
-```
-
-Downloads are written to a Docker-managed volume by default (or override with a volume mapping in `docker/docker-compose.yml`).
