@@ -1,17 +1,24 @@
-## GOG Offline Library Downloader
+# GOG Offline Library Downloader
 
-**Portable Windows app to browse your GOG library and download offline installers and bonus content to any folder you choose.**
+**Your GOG games, downloaded and ready to keep.**
+
+GOG Offline Library Downloader is a portable Windows app primarily designed to automatically download offline installers from your [GOG.com](https://www.gog.com/) library to a place you control. Sign in, choose your games and a download folder, and let the app collect the files for you.
+
+Keep your fully owned games on a local drive, external drive, or network storage so your offline installers are available whenever you need them. Shared storage makes those files accessible from any device that can access it; installing and playing a game still requires a compatible operating system and hardware.
 
 ### What it does
 
-- Shows your GOG games in a grid.
-- Lets you pick games and extras to download.
-- Saves files to a folder you control — change it live from the UI.
-- Runs entirely on your machine; nothing is uploaded anywhere.
+- Browse and search your GOG library in a cover grid.
+- Select games and automatically download their offline installers, with optional bonus content.
+- Save files to your chosen folder, organized by game.
+- Follow the download queue with a progress bar, download speed, and file status.
+- Run the app on your own Windows PC, with a browser interface.
 
-### Security model
+### Browse your library
 
-The portable app talks to your browser on **localhost** only (`127.0.0.1`). Your GOG session lives **in memory** while the app runs. The OAuth **client id / secret** in the repo are GOG’s **public** client values (not your account password). See [SECURITY.md](SECURITY.md) for the full policy, reporting process, and deployment notes.
+Search for a game, select the titles you want to keep offline, and choose where to save them. Use **Include bonus content** to download extras alongside your installers.
+
+![GOG library with game covers, search, selection controls, and download folder options](assets/screenshots/library.png)
 
 ---
 
@@ -45,6 +52,20 @@ The **Save to** field in the download options bar shows the current download loc
 
 Default location: `%USERPROFILE%\Downloads\GOG`
 
+### Follow your downloads
+
+Click **Download** after selecting your games. The **Download Queue** sidebar shows the current file's progress, downloaded size, and speed, along with completed files and games waiting in the queue. Use **Cancel** to stop the download job.
+
+![Download Queue sidebar showing an active download progress bar, download speed, completed files, and queued games](assets/screenshots/download-queue.png)
+
+---
+
+### Privacy and security
+
+The app runs on your computer and connects to GOG to sign you in, load your library, and download your files. Its browser interface is available on **localhost** only (`127.0.0.1`), and your GOG session stays **in memory** while the app runs.
+
+The OAuth **client id / secret** in the repo are GOG’s **public** client values, not your account password. See [SECURITY.md](SECURITY.md) for the full policy, reporting process, and deployment notes.
+
 ---
 
 ### Building from source
@@ -52,7 +73,7 @@ Default location: `%USERPROFILE%\Downloads\GOG`
 Requirements: **Node.js 20+**, **Python 3.11+**, and **pip** on your `PATH`.
 
 ```powershell
-git clone https://github.com/yourname/GOG-Downloader.git
+git clone https://github.com/treysl/GOG-Downloader.git
 cd GOG-Downloader
 .\build.ps1
 ```
