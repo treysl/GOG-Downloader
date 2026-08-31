@@ -6,6 +6,8 @@ GOG Offline Library Downloader is a portable Windows app primarily designed to a
 
 Keep your fully owned games on a local drive, external drive, or network storage so your offline installers are available whenever you need them. Shared storage makes those files accessible from any device that can access it; installing and playing a game still requires a compatible operating system and hardware.
 
+**[Download the ready-to-run Windows package](https://github.com/treysl/GOG-Downloader/releases/latest)** — unzip it and launch the app. No local build, Python, or Node.js installation is needed.
+
 ### What it does
 
 - Browse and search your GOG library in a cover grid.
@@ -22,12 +24,13 @@ Search for a game, select the titles you want to keep offline, and choose where 
 
 ---
 
-### Quick start
+### Quick start — no build required
 
-1. Download and unzip `GOG-Downloader.zip`.
-2. Double-click **`GOG-Downloader.exe`**.
-3. A purple **G** icon appears in the system tray (bottom-right of the taskbar). Your browser opens automatically to `http://localhost:8080`.
-4. Log in to GOG (see below), select games, and click **Download**.
+1. Open the [latest release](https://github.com/treysl/GOG-Downloader/releases/latest) and download the packaged app ZIP under **Assets** (currently `GOG-Downloader-v2.zip`), rather than the source code ZIP.
+2. Extract the entire ZIP to a folder on your computer.
+3. Double-click **`GOG-Downloader.exe`** inside the extracted folder.
+4. A purple **G** icon appears in the system tray (bottom-right of the taskbar). Your browser opens automatically to `http://localhost:8080`.
+5. Log in to GOG (see below), select games, and click **Download**.
 
 To quit the app, right-click the tray icon and choose **Exit**.  
 To reopen the browser at any time, double-click the tray icon or choose **Open Browser**.
@@ -68,7 +71,9 @@ The OAuth **client id / secret** in the repo are GOG’s **public** client value
 
 ---
 
-### Building from source
+### Building from source (optional)
+
+These steps are only needed if you want to build the app yourself. To use the app, download the Windows package above.
 
 Requirements: **Node.js 20+**, **Python 3.11+**, and **pip** on your `PATH`.
 
